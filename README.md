@@ -1,4 +1,4 @@
-# Weather-Station
+# Wokwi-Design Code
 {
   "version": 1,
   "author": "Anonymous maker",
