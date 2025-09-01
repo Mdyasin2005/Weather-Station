@@ -1,0 +1,120 @@
+
+#define BLYNK_TEMPLATE_ID "TMPL35xVFgfsD"
+#define BLYNK_DEVICE_NAME "WeatherStation"
+#define BLYNK_AUTH_TOKEN "3qHOMaq5tMQetWSG515klF1a7I8-fnFU"
+
+// Comment this out to disable prints and save space
+#define BLYNK_PRINT Serial
+
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+#include <DHT.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// ---------------- Pins ----------------
+#define DHTPIN 4
+#define DHTTYPE DHT11
+
+const int PIN_PRESSURE = 32; // Pot for BMP180 replacement
+const int PIN_RAIN     = 35; // Pot for Rain sensor replacement
+const int PIN_LDR      = 32; // LDR divider output
+
+// ---------------- Objects ----------------
+DHT dht(DHTPIN, DHTTYPE);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// ---------------- WiFi & Blynk ----------------
+char auth[] = "3qHOMaq5tMQetWSG515klF1a7I8-fnFU"
+
+char ssid[] = "NOT_FOR_YOU";      
+char pass[] = "tryagain"; 
+
+BlynkTimer timer;
+
+// ---------------- Sensor Reading Function ----------------
+void sendSensorData() {
+  // Read DHT11
+  float t = dht.readTemperature();
+  float h = dht.readHumidity();
+  if (isnan(t) || isnan(h)) {
+    Serial.println("DHT11 read error");
+    t = -127; h = -1;
+  }
+
+  // Read analogs
+  int rawPress = analogRead(PIN_PRESSURE);
+  int rawRain  = analogRead(PIN_RAIN);
+  int rawLdr   = analogRead(PIN_LDR);
+
+  // Map values
+  float pressure_hPa = 300.0 + (rawPress / 4095.0) * 800.0; // 300–1100 hPa
+  float rain_pct     = (rawRain / 4095.0) * 100.0;          // 0–100%
+  bool  rain_flag    = rawRain > 2500;                      // threshold
+  float light_pct    = (rawLdr / 4095.0) * 100.0;           // 0–100%
+
+  // Print to Serial
+  Serial.printf("T=%.1fC H=%.0f%% | P=%.0fhPa | Light=%.0f%% | Rain=%.0f%% (%s)\n",
+                t, h, pressure_hPa, light_pct, rain_pct, rain_flag ? "WET" : "DRY");
+
+  // Update LCD (for local display)
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("T:");
+  lcd.print(t, 1);
+  lcd.print("C H:");
+  lcd.print(h, 0);
+  lcd.print("%");
+
+  lcd.setCursor(0, 1);
+  lcd.print("P:");
+  lcd.print(pressure_hPa, 0);
+  lcd.print("hPa");
+
+  delay(1000);
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Light:");
+  lcd.print(light_pct, 0);
+  lcd.print("%");
+  lcd.setCursor(0, 1);
+  lcd.print("Rain:");
+  lcd.print(rain_pct, 0);
+  lcd.print("% ");
+  lcd.print(rain_flag ? "WET" : "DRY");
+
+  // Send data to Blynk Virtual Pins
+  Blynk.virtualWrite(V0, t);             // Temperature
+  Blynk.virtualWrite(V1, h);             // Humidity
+  Blynk.virtualWrite(V2, pressure_hPa);  // Pressure
+  Blynk.virtualWrite(V3, light_pct);     // Light %
+  Blynk.virtualWrite(V4, rain_pct);      // Rain %
+  Blynk.virtualWrite(V5, rain_flag);     // Rain Status (0/1)
+}
+
+// ---------------- Setup ----------------
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+  analogReadResolution(12);
+
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("IoT Wx Station");
+  lcd.setCursor(0, 1);
+  lcd.print("Connecting...");
+
+  // Connect to Blynk
+  Blynk.begin(auth, ssid, pass);
+
+  // Run every 2 seconds
+  timer.setInterval(2000L, sendSensorData);
+}
+
+// ---------------- Loop ----------------
+void loop() {
+  Blynk.run();
+  timer.run();
+}
